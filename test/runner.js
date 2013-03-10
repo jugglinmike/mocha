@@ -134,6 +134,31 @@ describe('Runner', function(){
     })
   })
 
+  describe('.skip(test)', function(){
+    it('should increment .skips', function(){
+      runner.skips.should.equal(0);
+      runner.skip({});
+      runner.skips.should.equal(1);
+      runner.skip({});
+      runner.skips.should.equal(2);
+    })
+
+    it('should set test.state to "skipped"', function(){
+      var test = {};
+      runner.skip(test);
+      test.state.should.equal('skipped');
+    })
+
+    it('should emit "skip"', function(done){
+      var test = {};
+      runner.on('skip', function(test){
+        test.should.equal(test);
+        done();
+      })
+      runner.skip(test);
+    })
+  });
+
   describe('.fail(test, err)', function(){
     it('should increment .failures', function(){
       runner.failures.should.equal(0);
