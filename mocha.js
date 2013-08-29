@@ -1,62 +1,325 @@
 ;(function(){
 
-// CommonJS require()
+/**
+ * Require the given path.
+ *
+ * @param {String} path
+ * @return {Object} exports
+ * @api public
+ */
 
-function require(p){
-    var path = require.resolve(p)
-      , mod = require.modules[path];
-    if (!mod) throw new Error('failed to require "' + p + '"');
-    if (!mod.exports) {
-      mod.exports = {};
-      mod.call(mod.exports, mod, mod.exports, require.relative(path));
-    }
-    return mod.exports;
+function require(path, parent, orig) {
+  var resolved = require.resolve(path);
+
+  // lookup failed
+  if (null == resolved) {
+    orig = orig || path;
+    parent = parent || 'root';
+    var err = new Error('Failed to require "' + orig + '" from "' + parent + '"');
+    err.path = orig;
+    err.parent = parent;
+    err.require = true;
+    throw err;
   }
+
+  var module = require.modules[resolved];
+
+  // perform real require()
+  // by invoking the module's
+  // registered function
+  if (!module.exports) {
+    module.exports = {};
+    module.client = module.component = true;
+    module.call(this, module.exports, require.relative(resolved), module);
+  }
+
+  return module.exports;
+}
+
+/**
+ * Registered modules.
+ */
 
 require.modules = {};
 
-require.resolve = function (path){
-    var orig = path
-      , reg = path + '.js'
-      , index = path + '/index.js';
-    return require.modules[reg] && reg
-      || require.modules[index] && index
-      || orig;
+/**
+ * Registered aliases.
+ */
+
+require.aliases = {};
+
+/**
+ * Resolve `path`.
+ *
+ * Lookup:
+ *
+ *   - PATH/index.js
+ *   - PATH.js
+ *   - PATH
+ *
+ * @param {String} path
+ * @return {String} path or null
+ * @api private
+ */
+
+require.resolve = function(path) {
+  if (path.charAt(0) === '/') path = path.slice(1);
+
+  var paths = [
+    path,
+    path + '.js',
+    path + '.json',
+    path + '/index.js',
+    path + '/index.json'
+  ];
+
+  for (var i = 0; i < paths.length; i++) {
+    var path = paths[i];
+    if (require.modules.hasOwnProperty(path)) return path;
+    if (require.aliases.hasOwnProperty(path)) return require.aliases[path];
+  }
+};
+
+/**
+ * Normalize `path` relative to the current path.
+ *
+ * @param {String} curr
+ * @param {String} path
+ * @return {String}
+ * @api private
+ */
+
+require.normalize = function(curr, path) {
+  var segs = [];
+
+  if ('.' != path.charAt(0)) return path;
+
+  curr = curr.split('/');
+  path = path.split('/');
+
+  for (var i = 0; i < path.length; ++i) {
+    if ('..' == path[i]) {
+      curr.pop();
+    } else if ('.' != path[i] && '' != path[i]) {
+      segs.push(path[i]);
+    }
+  }
+
+  return curr.concat(segs).join('/');
+};
+
+/**
+ * Register module at `path` with callback `definition`.
+ *
+ * @param {String} path
+ * @param {Function} definition
+ * @api private
+ */
+
+require.register = function(path, definition) {
+  require.modules[path] = definition;
+};
+
+/**
+ * Alias a module definition.
+ *
+ * @param {String} from
+ * @param {String} to
+ * @api private
+ */
+
+require.alias = function(from, to) {
+  if (!require.modules.hasOwnProperty(from)) {
+    throw new Error('Failed to alias "' + from + '", it does not exist');
+  }
+  require.aliases[to] = from;
+};
+
+/**
+ * Return a require function relative to the `parent` path.
+ *
+ * @param {String} parent
+ * @return {Function}
+ * @api private
+ */
+
+require.relative = function(parent) {
+  var p = require.normalize(parent, '..');
+
+  /**
+   * lastIndexOf helper.
+   */
+
+  function lastIndexOf(arr, obj) {
+    var i = arr.length;
+    while (i--) {
+      if (arr[i] === obj) return i;
+    }
+    return -1;
+  }
+
+  /**
+   * The relative require() itself.
+   */
+
+  function localRequire(path) {
+    var resolved = localRequire.resolve(path);
+    return require(resolved, parent, path);
+  }
+
+  /**
+   * Resolve relative to the parent.
+   */
+
+  localRequire.resolve = function(path) {
+    var c = path.charAt(0);
+    if ('/' == c) return path.slice(1);
+    if ('.' == c) return require.normalize(p, path);
+
+    // resolve deps by returning
+    // the dep in the nearest "deps"
+    // directory
+    var segs = parent.split('/');
+    var i = lastIndexOf(segs, 'deps') + 1;
+    if (!i) i = 0;
+    path = segs.slice(0, i + 1).join('/') + '/deps/' + path;
+    return path;
   };
 
-require.register = function (path, fn){
-    require.modules[path] = fn;
+  /**
+   * Check if module is defined at `path`.
+   */
+
+  localRequire.exists = function(path) {
+    return require.modules.hasOwnProperty(localRequire.resolve(path));
   };
 
-require.relative = function (parent) {
-    return function(p){
-      if ('.' != p.charAt(0)) return require(p);
+  return localRequire;
+};
+require.register("guille-ms.js/index.js", function(exports, require, module){
+/**
+ * Helpers.
+ */
+"MIKE";
 
-      var path = parent.split('/')
-        , segs = p.split('/');
-      path.pop();
+var s = 1000;
+var m = s * 60;
+var h = m * 60;
+var d = h * 24;
+var y = d * 365.25;
 
-      for (var i = 0; i < segs.length; i++) {
-        var seg = segs[i];
-        if ('..' == seg) path.pop();
-        else if ('.' != seg) path.push(seg);
-      }
+/**
+ * Parse or format the given `val`.
+ *
+ * Options:
+ *
+ *  - `long` verbose formatting [false]
+ *
+ * @param {String|Number} val
+ * @param {Object} options
+ * @return {String|Number}
+ * @api public
+ */
 
-      return require(path.join('/'));
-    };
-  };
+module.exports = function(val, options){
+  options = options || {};
+  if ('string' == typeof val) return parse(val);
+  return options.long
+    ? long(val)
+    : short(val);
+};
 
+/**
+ * Parse the given `str` and return milliseconds.
+ *
+ * @param {String} str
+ * @return {Number}
+ * @api private
+ */
 
-require.register("browser/debug.js", function(module, exports, require){
+function parse(str) {
+  var match = /^((?:\d+)?\.?\d+) *(ms|seconds?|s|minutes?|m|hours?|h|days?|d|years?|y)?$/i.exec(str);
+  if (!match) return;
+  var n = parseFloat(match[1]);
+  var type = (match[2] || 'ms').toLowerCase();
+  switch (type) {
+    case 'years':
+    case 'year':
+    case 'y':
+      return n * y;
+    case 'days':
+    case 'day':
+    case 'd':
+      return n * d;
+    case 'hours':
+    case 'hour':
+    case 'h':
+      return n * h;
+    case 'minutes':
+    case 'minute':
+    case 'm':
+      return n * m;
+    case 'seconds':
+    case 'second':
+    case 's':
+      return n * s;
+    case 'ms':
+      return n;
+  }
+}
+
+/**
+ * Short format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function short(ms) {
+  if (ms >= d) return Math.round(ms / d) + 'd';
+  if (ms >= h) return Math.round(ms / h) + 'h';
+  if (ms >= m) return Math.round(ms / m) + 'm';
+  if (ms >= s) return Math.round(ms / s) + 's';
+  return ms + 'ms';
+}
+
+/**
+ * Long format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function long(ms) {
+  return plural(ms, d, 'day')
+    || plural(ms, h, 'hour')
+    || plural(ms, m, 'minute')
+    || plural(ms, s, 'second')
+    || ms + ' ms';
+}
+
+/**
+ * Pluralization helper.
+ */
+
+function plural(ms, n, name) {
+  if (ms < n) return;
+  if (ms < n * 1.5) return Math.floor(ms / n) + ' ' + name;
+  return Math.ceil(ms / n) + ' ' + name + 's';
+}
+
+});
+require.register("mocha/lib/browser/debug.js", function(exports, require, module){
 
 module.exports = function(type){
   return function(){
   }
 };
 
-}); // module: browser/debug.js
-
-require.register("browser/diff.js", function(module, exports, require){
+});
+require.register("mocha/lib/browser/diff.js", function(exports, require, module){
 /* See license.txt for terms of usage */
 
 /*
@@ -345,9 +608,8 @@ if (typeof module !== "undefined") {
     module.exports = JsDiff;
 }
 
-}); // module: browser/diff.js
-
-require.register("browser/events.js", function(module, exports, require){
+});
+require.register("mocha/lib/browser/events.js", function(exports, require, module){
 
 /**
  * Module exports.
@@ -526,17 +788,14 @@ EventEmitter.prototype.emit = function (name) {
 
   return true;
 };
-}); // module: browser/events.js
+});
+require.register("mocha/lib/browser/fs.js", function(exports, require, module){
 
-require.register("browser/fs.js", function(module, exports, require){
+});
+require.register("mocha/lib/browser/path.js", function(exports, require, module){
 
-}); // module: browser/fs.js
-
-require.register("browser/path.js", function(module, exports, require){
-
-}); // module: browser/path.js
-
-require.register("browser/progress.js", function(module, exports, require){
+});
+require.register("mocha/lib/browser/progress.js", function(exports, require, module){
 
 /**
  * Expose `Progress`.
@@ -663,9 +922,8 @@ Progress.prototype.draw = function(ctx){
   return this;
 };
 
-}); // module: browser/progress.js
-
-require.register("browser/tty.js", function(module, exports, require){
+});
+require.register("mocha/lib/browser/tty.js", function(exports, require, module){
 
 exports.isatty = function(){
   return true;
@@ -680,9 +938,8 @@ exports.getWindowSize = function(){
   }
 };
 
-}); // module: browser/tty.js
-
-require.register("context.js", function(module, exports, require){
+});
+require.register("mocha/lib/context.js", function(exports, require, module){
 
 /**
  * Expose `Context`.
@@ -753,9 +1010,8 @@ Context.prototype.inspect = function(){
   }, 2);
 };
 
-}); // module: context.js
-
-require.register("hook.js", function(module, exports, require){
+});
+require.register("mocha/lib/hook.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -786,11 +1042,7 @@ function Hook(title, fn) {
  * Inherit from `Runnable.prototype`.
  */
 
-function F(){};
-F.prototype = Runnable.prototype;
-Hook.prototype = new F;
-Hook.prototype.constructor = Hook;
-
+Hook.prototype.__proto__ = Runnable.prototype;
 
 /**
  * Get or set the test `err`.
@@ -810,16 +1062,16 @@ Hook.prototype.error = function(err){
   this._error = err;
 };
 
-}); // module: hook.js
-
-require.register("interfaces/bdd.js", function(module, exports, require){
+});
+require.register("mocha/lib/interfaces/bdd.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
 var Suite = require('../suite')
-  , Test = require('../test');
+  , Test = require('../test')
+  , utils = require('../utils');
 
 /**
  * BDD-style interface:
@@ -932,7 +1184,8 @@ module.exports = function(suite){
 
     context.it.only = function(title, fn){
       var test = context.it(title, fn);
-      mocha.grep(test.fullTitle());
+      var reString = '^' + utils.escapeRegexp(test.fullTitle()) + '$';
+      mocha.grep(new RegExp(reString));
     };
 
     /**
@@ -947,9 +1200,8 @@ module.exports = function(suite){
   });
 };
 
-}); // module: interfaces/bdd.js
-
-require.register("interfaces/exports.js", function(module, exports, require){
+});
+require.register("mocha/lib/interfaces/exports.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -1011,25 +1263,24 @@ module.exports = function(suite){
   }
 };
 
-}); // module: interfaces/exports.js
-
-require.register("interfaces/index.js", function(module, exports, require){
+});
+require.register("mocha/lib/interfaces/index.js", function(exports, require, module){
 
 exports.bdd = require('./bdd');
 exports.tdd = require('./tdd');
 exports.qunit = require('./qunit');
 exports.exports = require('./exports');
 
-}); // module: interfaces/index.js
-
-require.register("interfaces/qunit.js", function(module, exports, require){
+});
+require.register("mocha/lib/interfaces/qunit.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
 var Suite = require('../suite')
-  , Test = require('../test');
+  , Test = require('../test')
+  , utils = require('../utils');
 
 /**
  * QUnit-style interface:
@@ -1131,7 +1382,8 @@ module.exports = function(suite){
 
     context.test.only = function(title, fn){
       var test = context.test(title, fn);
-      mocha.grep(test.fullTitle());
+      var reString = '^' + utils.escapeRegexp(test.fullTitle()) + '$';
+      mocha.grep(new RegExp(reString));
     };
 
     /**
@@ -1144,16 +1396,16 @@ module.exports = function(suite){
   });
 };
 
-}); // module: interfaces/qunit.js
-
-require.register("interfaces/tdd.js", function(module, exports, require){
+});
+require.register("mocha/lib/interfaces/tdd.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
 var Suite = require('../suite')
-  , Test = require('../test');
+  , Test = require('../test')
+  , utils = require('../utils');;
 
 /**
  * TDD-style interface:
@@ -1271,7 +1523,8 @@ module.exports = function(suite){
 
     context.test.only = function(title, fn){
       var test = context.test(title, fn);
-      mocha.grep(test.fullTitle());
+      var reString = '^' + utils.escapeRegexp(test.fullTitle()) + '$';
+      mocha.grep(new RegExp(reString));
     };
 
     /**
@@ -1284,9 +1537,8 @@ module.exports = function(suite){
   });
 };
 
-}); // module: interfaces/tdd.js
-
-require.register("mocha.js", function(module, exports, require){
+});
+require.register("mocha/lib/mocha.js", function(exports, require, module){
 /*!
  * mocha
  * Copyright(c) 2011 TJ Holowaychuk <tj@vision-media.ca>
@@ -1297,7 +1549,7 @@ require.register("mocha.js", function(module, exports, require){
  * Module dependencies.
  */
 
-var path = require('browser/path')
+var path = require('path')
   , utils = require('./utils');
 
 /**
@@ -1359,7 +1611,7 @@ function Mocha(options) {
   this.ui(options.ui);
   this.bail(options.bail);
   this.reporter(options.reporter);
-  if (options.timeout) this.timeout(options.timeout);
+  if (typeof options.timeout === 'number') this.timeout(options.timeout);
   if (options.slow) this.slow(options.slow);
 }
 
@@ -1605,101 +1857,16 @@ Mocha.prototype.run = function(fn){
   return runner.run(fn);
 };
 
-}); // module: mocha.js
-
-require.register("ms.js", function(module, exports, require){
-
-/**
- * Helpers.
- */
-
-var s = 1000;
-var m = s * 60;
-var h = m * 60;
-var d = h * 24;
-
-/**
- * Parse or format the given `val`.
- *
- * @param {String|Number} val
- * @return {String|Number}
- * @api public
- */
-
-module.exports = function(val){
-  if ('string' == typeof val) return parse(val);
-  return format(val);
-}
-
-/**
- * Parse the given `str` and return milliseconds.
- *
- * @param {String} str
- * @return {Number}
- * @api private
- */
-
-function parse(str) {
-  var m = /^((?:\d+)?\.?\d+) *(ms|seconds?|s|minutes?|m|hours?|h|days?|d|years?|y)?$/i.exec(str);
-  if (!m) return;
-  var n = parseFloat(m[1]);
-  var type = (m[2] || 'ms').toLowerCase();
-  switch (type) {
-    case 'years':
-    case 'year':
-    case 'y':
-      return n * 31557600000;
-    case 'days':
-    case 'day':
-    case 'd':
-      return n * 86400000;
-    case 'hours':
-    case 'hour':
-    case 'h':
-      return n * 3600000;
-    case 'minutes':
-    case 'minute':
-    case 'm':
-      return n * 60000;
-    case 'seconds':
-    case 'second':
-    case 's':
-      return n * 1000;
-    case 'ms':
-      return n;
-  }
-}
-
-/**
- * Format the given `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api public
- */
-
-function format(ms) {
-  if (ms == d) return Math.round(ms / d) + ' day';
-  if (ms > d) return Math.round(ms / d) + ' days';
-  if (ms == h) return Math.round(ms / h) + ' hour';
-  if (ms > h) return Math.round(ms / h) + ' hours';
-  if (ms == m) return Math.round(ms / m) + ' minute';
-  if (ms > m) return Math.round(ms / m) + ' minutes';
-  if (ms == s) return Math.round(ms / s) + ' second';
-  if (ms > s) return Math.round(ms / s) + ' seconds';
-  return ms + ' ms';
-}
-}); // module: ms.js
-
-require.register("reporters/base.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/base.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
-var tty = require('browser/tty')
-  , diff = require('browser/diff')
-  , ms = require('../ms');
+var tty = require('tty')
+  , diff = require('diff')
+  , ms = require('guille-ms');
 
 /**
  * Save timer references to avoid Sinon interfering (see GH-237).
@@ -2094,9 +2261,8 @@ function sameType(a, b) {
   return a == b;
 }
 
-}); // module: reporters/base.js
-
-require.register("reporters/doc.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/doc.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2154,9 +2320,8 @@ function Doc(runner) {
   });
 }
 
-}); // module: reporters/doc.js
-
-require.register("reporters/dot.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/dot.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2218,21 +2383,16 @@ function Dot(runner) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-Dot.prototype = new F;
-Dot.prototype.constructor = Dot;
-
-}); // module: reporters/dot.js
-
-require.register("reporters/html-cov.js", function(module, exports, require){
+Dot.prototype.__proto__ = Base.prototype;
+});
+require.register("mocha/lib/reporters/html-cov.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
 var JSONCov = require('./json-cov')
-  , fs = require('browser/fs');
+  , fs = require('fs');
 
 /**
  * Expose `HTMLCov`.
@@ -2277,9 +2437,8 @@ function coverageClass(n) {
   if (n >= 25) return 'low';
   return 'terrible';
 }
-}); // module: reporters/html-cov.js
-
-require.register("reporters/html.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/html.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2306,7 +2465,6 @@ var Date = global.Date
 
 exports = module.exports = HTML;
 
-
 /**
  * Stats template.
  */
@@ -2314,7 +2472,6 @@ exports = module.exports = HTML;
 var statsTemplate = '<ul id="mocha-stats">'
   + '<li class="progress"><canvas width="40" height="40"></canvas></li>'
   + '<li class="passes"><a href="#">passes:</a> <em>0</em></li>'
-  + '<li class="pending"><a href="#">pending:</a> <em>0</em></li>'
   + '<li class="failures"><a href="#">failures:</a> <em>0</em></li>'
   + '<li class="duration">duration: <em>0</em>s</li>'
   + '</ul>';
@@ -2336,11 +2493,9 @@ function HTML(runner, root) {
     , items = stat.getElementsByTagName('li')
     , passes = items[1].getElementsByTagName('em')[0]
     , passesLink = items[1].getElementsByTagName('a')[0]
-    , pending = items[2].getElementsByTagName('em')[0]
-    , pendingLink = items[2].getElementsByTagName('a')[0]
-    , failures = items[3].getElementsByTagName('em')[0]
-    , failuresLink = items[3].getElementsByTagName('a')[0]
-    , duration = items[4].getElementsByTagName('em')[0]
+    , failures = items[2].getElementsByTagName('em')[0]
+    , failuresLink = items[2].getElementsByTagName('a')[0]
+    , duration = items[3].getElementsByTagName('em')[0]
     , canvas = stat.getElementsByTagName('canvas')[0]
     , report = fragment('<ul id="mocha-report"></ul>')
     , stack = [report]
@@ -2366,23 +2521,15 @@ function HTML(runner, root) {
   on(passesLink, 'click', function(){
     unhide();
     var name = /pass/.test(report.className) ? '' : ' pass';
-    report.className = report.className.replace(/fail|pass|pending/g, '') + name;
+    report.className = report.className.replace(/fail|pass/g, '') + name;
     if (report.className.trim()) hideSuitesWithout('test pass');
-  });
-
-  // pending toggle
-  on(pendingLink, 'click', function(){
-    unhide();
-    var name = /pending/.test(report.className) ? '' : ' pending';
-    report.className = report.className.replace(/fail|pass|pending/g, '') + name;
-    if (report.className.trim()) hideSuitesWithout('test pending');
   });
 
   // failure toggle
   on(failuresLink, 'click', function(){
     unhide();
     var name = /fail/.test(report.className) ? '' : ' fail';
-    report.className = report.className.replace(/fail|pass|pending/g, '') + name;
+    report.className = report.className.replace(/fail|pass/g, '') + name;
     if (report.className.trim()) hideSuitesWithout('test fail');
   });
 
@@ -2422,7 +2569,6 @@ function HTML(runner, root) {
     var ms = new Date - stats.start;
     text(passes, stats.passes);
     text(failures, stats.failures);
-    text(pending, stats.pending);
     text(duration, (ms / 1000).toFixed(2));
 
     // test
@@ -2508,7 +2654,7 @@ function hideSuitesWithout(classname) {
   var suites = document.getElementsByClassName('suite');
   for (var i = 0; i < suites.length; i++) {
     var els = suites[i].getElementsByClassName(classname);
-    if (0 == els.length && !/hidden/.test(suites[i].className)) suites[i].className += ' hidden';
+    if (0 == els.length) suites[i].className += ' hidden';
   }
 }
 
@@ -2517,7 +2663,7 @@ function hideSuitesWithout(classname) {
  */
 
 function unhide() {
-  var els = document.getElementsByClassName('suite');
+  var els = document.getElementsByClassName('suite hidden');
   for (var i = 0; i < els.length; ++i) {
     els[i].className = els[i].className.replace('suite hidden', 'suite');
   }
@@ -2547,9 +2693,8 @@ function on(el, event, fn) {
   }
 }
 
-}); // module: reporters/html.js
-
-require.register("reporters/index.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/index.js", function(exports, require, module){
 
 exports.Base = require('./base');
 exports.Dot = require('./dot');
@@ -2570,9 +2715,8 @@ exports.HTMLCov = require('./html-cov');
 exports.JSONStream = require('./json-stream');
 exports.Teamcity = require('./teamcity');
 
-}); // module: reporters/index.js
-
-require.register("reporters/json-cov.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/json-cov.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2727,9 +2871,8 @@ function clean(test) {
   }
 }
 
-}); // module: reporters/json-cov.js
-
-require.register("reporters/json-stream.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/json-stream.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2791,9 +2934,8 @@ function clean(test) {
     , duration: test.duration
   }
 }
-}); // module: reporters/json-stream.js
-
-require.register("reporters/json.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/json.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2864,9 +3006,8 @@ function clean(test) {
     , duration: test.duration
   }
 }
-}); // module: reporters/json.js
-
-require.register("reporters/landing.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/landing.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -2963,14 +3104,9 @@ function Landing(runner) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-Landing.prototype = new F;
-Landing.prototype.constructor = Landing;
-
-}); // module: reporters/landing.js
-
-require.register("reporters/list.js", function(module, exports, require){
+Landing.prototype.__proto__ = Base.prototype;
+});
+require.register("mocha/lib/reporters/list.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3034,15 +3170,10 @@ function List(runner) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-List.prototype = new F;
-List.prototype.constructor = List;
+List.prototype.__proto__ = Base.prototype;
 
-
-}); // module: reporters/list.js
-
-require.register("reporters/markdown.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/markdown.js", function(exports, require, module){
 /**
  * Module dependencies.
  */
@@ -3134,9 +3265,8 @@ function Markdown(runner) {
     process.stdout.write(buf);
   });
 }
-}); // module: reporters/markdown.js
-
-require.register("reporters/min.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/min.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3174,15 +3304,10 @@ function Min(runner) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-Min.prototype = new F;
-Min.prototype.constructor = Min;
+Min.prototype.__proto__ = Base.prototype;
 
-
-}); // module: reporters/min.js
-
-require.register("reporters/nyan.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/nyan.js", function(exports, require, module){
 /**
  * Module dependencies.
  */
@@ -3205,7 +3330,6 @@ exports = module.exports = NyanCat;
 
 function NyanCat(runner) {
   Base.call(this, runner);
-
   var self = this
     , stats = this.stats
     , width = Base.window.width * .75 | 0
@@ -3221,19 +3345,19 @@ function NyanCat(runner) {
 
   runner.on('start', function(){
     Base.cursor.hide();
-    self.draw('start');
+    self.draw();
   });
 
   runner.on('pending', function(test){
-    self.draw('pending');
+    self.draw();
   });
 
   runner.on('pass', function(test){
-    self.draw('pass');
+    self.draw();
   });
 
   runner.on('fail', function(test, err){
-    self.draw('fail');
+    self.draw();
   });
 
   runner.on('end', function(){
@@ -3244,17 +3368,16 @@ function NyanCat(runner) {
 }
 
 /**
- * Draw the nyan cat with runner `status`.
+ * Draw the nyan cat
  *
- * @param {String} status
  * @api private
  */
 
-NyanCat.prototype.draw = function(status){
+NyanCat.prototype.draw = function(){
   this.appendRainbow();
   this.drawScoreboard();
   this.drawRainbow();
-  this.drawNyanCat(status);
+  this.drawNyanCat();
   this.tick = !this.tick;
 };
 
@@ -3319,44 +3442,33 @@ NyanCat.prototype.drawRainbow = function(){
 };
 
 /**
- * Draw the nyan cat with `status`.
+ * Draw the nyan cat
  *
- * @param {String} status
  * @api private
  */
 
-NyanCat.prototype.drawNyanCat = function(status) {
+NyanCat.prototype.drawNyanCat = function() {
   var self = this;
   var startWidth = this.scoreboardWidth + this.trajectories[0].length;
   var color = '\u001b[' + startWidth + 'C';
   var padding = '';
-  
+
   write(color);
   write('_,------,');
   write('\n');
-  
+
   write(color);
   padding = self.tick ? '  ' : '   ';
   write('_|' + padding + '/\\_/\\ ');
   write('\n');
-  
+
   write(color);
   padding = self.tick ? '_' : '__';
   var tail = self.tick ? '~' : '^';
   var face;
-  switch (status) {
-    case 'pass':
-      face = '( ^ .^)';
-      break;
-    case 'fail':
-      face = '( o .o)';
-      break;
-    default:
-      face = '( - .-)';
-  }
-  write(tail + '|' + padding + face + ' ');
+  write(tail + '|' + padding + this.face() + ' ');
   write('\n');
-  
+
   write(color);
   padding = self.tick ? ' ' : '  ';
   write(padding + '""  "" ');
@@ -3364,6 +3476,26 @@ NyanCat.prototype.drawNyanCat = function(status) {
 
   this.cursorUp(this.numberOfLines);
 };
+
+/**
+ * Draw nyan cat face.
+ *
+ * @return {String}
+ * @api private
+ */
+
+NyanCat.prototype.face = function() {
+  var stats = this.stats;
+  if (stats.failures) {
+    return '( x .x)';
+  } else if (stats.pending) {
+    return '( o .o)';
+  } else if(stats.passes) {
+    return '( ^ .^)';
+  } else {
+    return '( - .-)';
+  }
+}
 
 /**
  * Move cursor up `n`.
@@ -3435,15 +3567,10 @@ function write(string) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-NyanCat.prototype = new F;
-NyanCat.prototype.constructor = NyanCat;
+NyanCat.prototype.__proto__ = Base.prototype;
 
-
-}); // module: reporters/nyan.js
-
-require.register("reporters/progress.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/progress.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3529,15 +3656,10 @@ function Progress(runner, options) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-Progress.prototype = new F;
-Progress.prototype.constructor = Progress;
+Progress.prototype.__proto__ = Base.prototype;
 
-
-}); // module: reporters/progress.js
-
-require.register("reporters/spec.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/spec.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3624,15 +3746,10 @@ function Spec(runner) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-Spec.prototype = new F;
-Spec.prototype.constructor = Spec;
+Spec.prototype.__proto__ = Base.prototype;
 
-
-}); // module: reporters/spec.js
-
-require.register("reporters/tap.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/tap.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3707,9 +3824,8 @@ function title(test) {
   return test.fullTitle().replace(/#/g, '');
 }
 
-}); // module: reporters/tap.js
-
-require.register("reporters/teamcity.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/teamcity.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3776,9 +3892,8 @@ function escape(str) {
     .replace(/'/g, "|'");
 }
 
-}); // module: reporters/teamcity.js
-
-require.register("reporters/xunit.js", function(module, exports, require){
+});
+require.register("mocha/lib/reporters/xunit.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -3845,11 +3960,7 @@ function XUnit(runner) {
  * Inherit from `Base.prototype`.
  */
 
-function F(){};
-F.prototype = Base.prototype;
-XUnit.prototype = new F;
-XUnit.prototype.constructor = XUnit;
-
+XUnit.prototype.__proto__ = Base.prototype;
 
 /**
  * Output tag for the given `test.`
@@ -3899,17 +4010,16 @@ function cdata(str) {
   return '<![CDATA[' + escape(str) + ']]>';
 }
 
-}); // module: reporters/xunit.js
-
-require.register("runnable.js", function(module, exports, require){
+});
+require.register("mocha/lib/runnable.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
-var EventEmitter = require('browser/events').EventEmitter
-  , debug = require('browser/debug')('mocha:runnable')
-  , milliseconds = require('./ms');
+var EventEmitter = require('events').EventEmitter
+  , debug = require('debug')('mocha:runnable')
+  , milliseconds = require('ms');
 
 /**
  * Save timer references to avoid Sinon interfering (see GH-237).
@@ -3955,11 +4065,7 @@ function Runnable(title, fn) {
  * Inherit from `EventEmitter.prototype`.
  */
 
-function F(){};
-F.prototype = EventEmitter.prototype;
-Runnable.prototype = new F;
-Runnable.prototype.constructor = Runnable;
-
+Runnable.prototype.__proto__ = EventEmitter.prototype;
 
 /**
  * Set & get timeout `ms`.
@@ -4124,15 +4230,14 @@ Runnable.prototype.run = function(fn){
   }
 };
 
-}); // module: runnable.js
-
-require.register("runner.js", function(module, exports, require){
+});
+require.register("mocha/lib/runner.js", function(exports, require, module){
 /**
  * Module dependencies.
  */
 
-var EventEmitter = require('browser/events').EventEmitter
-  , debug = require('browser/debug')('mocha:runner')
+var EventEmitter = require('events').EventEmitter
+  , debug = require('debug')('mocha:runner')
   , Test = require('./test')
   , utils = require('./utils')
   , filter = utils.filter
@@ -4202,11 +4307,7 @@ Runner.immediately = global.setImmediate || process.nextTick;
  * Inherit from `EventEmitter.prototype`.
  */
 
-function F(){};
-F.prototype = EventEmitter.prototype;
-Runner.prototype = new F;
-Runner.prototype.constructor = Runner;
-
+Runner.prototype.__proto__ = EventEmitter.prototype;
 
 /**
  * Run tests with full titles matching `re`. Updates runner.total
@@ -4679,17 +4780,16 @@ function filterLeaks(ok, globals) {
   });
 }
 
-}); // module: runner.js
-
-require.register("suite.js", function(module, exports, require){
+});
+require.register("mocha/lib/suite.js", function(exports, require, module){
 
 /**
  * Module dependencies.
  */
 
-var EventEmitter = require('browser/events').EventEmitter
-  , debug = require('browser/debug')('mocha:suite')
-  , milliseconds = require('./ms')
+var EventEmitter = require('events').EventEmitter
+  , debug = require('debug')('mocha:suite')
+  , milliseconds = require('ms')
   , utils = require('./utils')
   , Hook = require('./hook');
 
@@ -4750,11 +4850,7 @@ function Suite(title, ctx) {
  * Inherit from `EventEmitter.prototype`.
  */
 
-function F(){};
-F.prototype = EventEmitter.prototype;
-Suite.prototype = new F;
-Suite.prototype.constructor = Suite;
-
+Suite.prototype.__proto__ = EventEmitter.prototype;
 
 /**
  * Return a clone of this `Suite`.
@@ -4983,9 +5079,8 @@ Suite.prototype.eachTest = function(fn){
   return this;
 };
 
-}); // module: suite.js
-
-require.register("test.js", function(module, exports, require){
+});
+require.register("mocha/lib/test.js", function(exports, require, module){
 
 /**
  * Module dependencies.
@@ -5017,24 +5112,18 @@ function Test(title, fn) {
  * Inherit from `Runnable.prototype`.
  */
 
-function F(){};
-F.prototype = Runnable.prototype;
-Test.prototype = new F;
-Test.prototype.constructor = Test;
+Test.prototype.__proto__ = Runnable.prototype;
 
-
-}); // module: test.js
-
-require.register("utils.js", function(module, exports, require){
-
+});
+require.register("mocha/lib/utils.js", function(exports, require, module){
 /**
  * Module dependencies.
  */
 
-var fs = require('browser/fs')
-  , path = require('browser/path')
+var fs = require('fs')
+  , path = require('path')
   , join = path.join
-  , debug = require('browser/debug')('mocha:watch');
+  , debug = require('debug')('mocha:watch');
 
 /**
  * Ignored directories.
@@ -5191,7 +5280,7 @@ exports.files = function(dir, ret){
     path = join(dir, path);
     if (fs.statSync(path).isDirectory()) {
       exports.files(path, ret);
-    } else if (path.match(/\.(js|coffee)$/)) {
+    } else if (path.match(/\.(js|coffee|litcoffee|coffee.md)$/)) {
       ret.push(path);
     }
   });
@@ -5309,133 +5398,14 @@ exports.highlightTags = function(name) {
   }
 };
 
-}); // module: utils.js
-// The global object is "self" in Web Workers.
-global = (function() { return this; })();
+});
+require.alias("guille-ms.js/index.js", "mocha/deps/ms/index.js");
+require.alias("guille-ms.js/index.js", "ms/index.js");
 
-/**
- * Save timer references to avoid Sinon interfering (see GH-237).
- */
-
-var Date = global.Date;
-var setTimeout = global.setTimeout;
-var setInterval = global.setInterval;
-var clearTimeout = global.clearTimeout;
-var clearInterval = global.clearInterval;
-
-/**
- * Node shims.
- *
- * These are meant only to allow
- * mocha.js to run untouched, not
- * to allow running node code in
- * the browser.
- */
-
-var process = {};
-process.exit = function(status){};
-process.stdout = {};
-
-/**
- * Remove uncaughtException listener.
- */
-
-process.removeListener = function(e){
-  if ('uncaughtException' == e) {
-    global.onerror = function() {};
-  }
-};
-
-/**
- * Implements uncaughtException listener.
- */
-
-process.on = function(e, fn){
-  if ('uncaughtException' == e) {
-    global.onerror = function(err, url, line){
-      fn(new Error(err + ' (' + url + ':' + line + ')'));
-    };
-  }
-};
-
-/**
- * Expose mocha.
- */
-
-var Mocha = global.Mocha = require('mocha'),
-    mocha = global.mocha = new Mocha({ reporter: 'html' });
-
-var immediateQueue = []
-  , immediateTimeout;
-
-function timeslice() {
-  var immediateStart = new Date().getTime();
-  while (immediateQueue.length && (new Date().getTime() - immediateStart) < 100) {
-    immediateQueue.shift()();
-  }
-  if (immediateQueue.length) {
-    immediateTimeout = setTimeout(timeslice, 0);
-  } else {
-    immediateTimeout = null;
-  }
-}
-
-/**
- * High-performance override of Runner.immediately.
- */
-
-Mocha.Runner.immediately = function(callback) {
-  immediateQueue.push(callback);
-  if (!immediateTimeout) {
-    immediateTimeout = setTimeout(timeslice, 0);
-  }
-};
-
-/**
- * Override ui to ensure that the ui functions are initialized.
- * Normally this would happen in Mocha.prototype.loadFiles.
- */
-
-mocha.ui = function(ui){
-  Mocha.prototype.ui.call(this, ui);
-  this.suite.emit('pre-require', global, null, this);
-  return this;
-};
-
-/**
- * Setup mocha with the given setting options.
- */
-
-mocha.setup = function(opts){
-  if ('string' == typeof opts) opts = { ui: opts };
-  for (var opt in opts) this[opt](opts[opt]);
-  return this;
-};
-
-/**
- * Run mocha, returning the Runner.
- */
-
-mocha.run = function(fn){
-  var options = mocha.options;
-  mocha.globals('location');
-
-  var query = Mocha.utils.parseQuery(global.location.search || '');
-  if (query.grep) mocha.grep(query.grep);
-  if (query.invert) mocha.invert();
-
-  return Mocha.prototype.run.call(mocha, function(){
-    // The DOM Document is not available in Web Workers.
-    if (global.document) {
-      Mocha.utils.highlightTags('code');
-    }
-    if (fn) fn();
-  });
-};
-
-/**
- * Expose the process shim.
- */
-
-Mocha.process = process;
-})();
+require.alias("mocha/lib/mocha.js", "mocha/index.js");if (typeof exports == "object") {
+  module.exports = require("mocha");
+} else if (typeof define == "function" && define.amd) {
+  define(function(){ return require("mocha"); });
+} else {
+  this["mocha"] = require("mocha");
+}})();

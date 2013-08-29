@@ -10,13 +10,10 @@ lib/browser/diff.js: node_modules/diff/diff.js
 	cp node_modules/diff/diff.js lib/browser/diff.js
 
 mocha.js: $(SRC) $(SUPPORT) lib/browser/diff.js
-	@node support/compile $(SRC)
-	@cat \
-	  support/head.js \
-	  _mocha.js \
-	  support/tail.js \
-	  support/foot.js \
-	  > mocha.js
+	@./node_modules/.bin/component build \
+		--name mocha \
+		--standalone mocha \
+		--out .
 
 clean:
 	rm -f mocha.js
